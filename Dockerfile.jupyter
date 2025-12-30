@@ -1,15 +1,21 @@
 # syntax=docker/dockerfile:1.6
 # Development Dockerfile with JupyterLab for interactive notebook development
-# Build: docker build -f Dockerfile.jupyter -t spark-jupyter:latest .
-# Run:   docker run -p 8888:8888 -v $(pwd)/hello-world/src:/workspace/app/src spark-jupyter:latest
+# Build: cd .. && docker buildx build --platform linux/amd64 -t hello-world:jupyter --load -f hello-world/Dockerfile.jupyter .
+# Run:   docker run -p 8888:8888 -v $(pwd)/hello-world/src:/workspace/app/src hello-world:jupyter
 
+# Multi-stage build for better caching
+# Stage 1: Spark and Python dependencies
 FROM apache/spark:3.5.6-python3 AS spark-deps
 
+# S3 jar versions (can be overridden at build)
+# Use Hadoop 3.3.4 to match Spark 3.5.6's built-in Hadoop version
 ARG HADOOP_AWS_VER=3.3.4
 ARG AWS_SDK_BUNDLE_VER=1.12.746
 
+# Switch to root user
 USER root
 
+# Install build dependencies and uv (cached unless base image changes)
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -18,31 +24,40 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Stage 2: Build orchestera-lib wheel
 FROM spark-deps AS wheel-builder
 
+# Copy only orchestera-lib source code and build wheel (cached unless code changes)
 COPY orchestera-lib /workspace/orchestera-lib
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     cd /workspace/orchestera-lib && \
     uv build
 
-# Stage 3: Final development stage
+# Stage 3: Final application stage
 FROM apache/spark:3.5.6-python3
 
+# Redeclare S3 jar version args for this stage - use newer AWS SDK that supports ecsFullUriAllowedHosts
+# Use Hadoop 3.3.4 to match Spark 3.5.6's built-in Hadoop version
 ARG HADOOP_AWS_VER=3.3.4
 ARG AWS_SDK_BUNDLE_VER=1.12.746
 
+# Switch to root user
 USER root
 
+# Ensure a consistent non-root user/group exists in the final image with proper home directory
 RUN set -eux; \
     if ! getent group spark >/dev/null; then groupadd -g 1000 spark; fi; \
-    if ! id -u spark >/dev/null 2>&1; then useradd -m -u 1000 -g spark -s /bin/bash spark; fi
+    if ! id -u spark >/dev/null 2>&1; then useradd -m -u 1000 -g spark -s /bin/bash spark; fi; \
+    mkdir -p /home/spark && chown spark:spark /home/spark
 
+# Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# Install Python 3.10 via uv and create venv
 ENV UV_PYTHON_INSTALL_DIR=/opt/python
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
@@ -50,13 +65,17 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv python install 3.10 && \
     uv venv --python 3.10 $VIRTUAL_ENV
 
+# Pre-bake S3 support jars using Hadoop 3.3.4 to match Spark 3.5.6
+# Only add hadoop-aws and aws-java-sdk-bundle (hadoop-client JARs already present)
 RUN mkdir -p /opt/spark/jars && \
     curl -fL "https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_AWS_VER}/hadoop-aws-${HADOOP_AWS_VER}.jar" -o /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VER}.jar && \
     curl -fL "https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_BUNDLE_VER}/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VER}.jar" -o /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VER}.jar && \
     chown spark:spark /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VER}.jar /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VER}.jar
 
+# Copy pre-built orchestera-lib wheel from wheel-builder stage
 COPY --from=wheel-builder /workspace/orchestera-lib/dist/*.whl /tmp/
 
+# Install orchestera-lib wheel into venv
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install /tmp/*.whl && rm /tmp/*.whl
 
@@ -69,18 +88,26 @@ RUN python -m ipykernel install --name spark-python --display-name "Spark Python
 
 WORKDIR /workspace/app
 
+# Copy pyproject.toml and uv.lock first (cached unless dependencies change)
 COPY hello-world/pyproject.toml hello-world/uv.lock ./
 
+# Install Python dependencies (cached unless pyproject.toml/uv.lock changes)
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install pyspark==3.5.6
 
+# Copy application code last (only this layer rebuilds when code changes)
 COPY hello-world/src /workspace/app/src
 
+# Ensure workspace is owned by non-root user
 RUN chown -R spark:spark /workspace
 
+# Set environment variables - Jupyter directories must be writable
 ENV NB_USER=spark \
     NB_UID=1000 \
     NB_GID=1000 \
+    HOME=/workspace \
+    JUPYTER_RUNTIME_DIR=/workspace/.jupyter/runtime \
+    JUPYTER_DATA_DIR=/workspace/.jupyter/data \
     PYSPARK_PYTHON=/opt/venv/bin/python \
     JUPYTER_TOKEN=dev
 
@@ -88,7 +115,8 @@ WORKDIR /workspace/app/src
 
 EXPOSE 8888
 
+# Drop privileges
 USER spark
 
 # Start JupyterLab by default (mount your code with -v for hot reload)
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--NotebookApp.token=${JUPYTER_TOKEN}", "--NotebookApp.allow_origin=*"]
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--ServerApp.token=dev", "--ServerApp.allow_origin=*"]
