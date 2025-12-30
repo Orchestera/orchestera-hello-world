@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-EXECUTOR_IMAGE = "853027285987.dkr.ecr.us-east-1.amazonaws.com/hello-world:latest"
+EXECUTOR_IMAGE = "ghcr.io/orchestera/docker-images/spark:latest"
 
 
 class SparkK8sHelloWorld(SparklithEntryPoint):

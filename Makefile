@@ -3,6 +3,7 @@ ECR_REGISTRY ?= 853027285987.dkr.ecr.us-east-1.amazonaws.com
 TAG ?= latest
 AWS_PROFILE ?= orchestera-dev
 DOCKER_ARGS ?=
+GHCR_JUPYTER_IMAGE ?= ghcr.io/orchestera/docker-images/jupyter:latest
 
 .PHONY: venv build push build-dev push-dev build-jupyter push-jupyter
 
@@ -45,4 +46,16 @@ port-forward-jupyter-notebook:
 ifndef NAMESPACE
 	$(error NAMESPACE is required. Usage: make port-forward-jupyter-notebook NAMESPACE=<namespace>)
 endif
-	kubectl port-forward pod/jupyter 8888:8888 -n $(NAMESPACE)
+	@nohup kubectl port-forward pod/jupyter 8888:8888 -n $(NAMESPACE) > /dev/null 2>&1 &
+	@echo "Port forward running in background. Access Jupyter at http://localhost:8888"
+	@echo "Run 'make stop-port-forward' to stop"
+
+# Stop port-forward for jupyter
+stop-port-forward:
+	-pkill -f "kubectl port-forward pod/jupyter 8888:8888"
+	@echo "Port forward stopped"
+
+# make launch-prebuilt-jupyter-notebook NAMESPACE=prod-app
+launch-prebuilt-jupyter-notebook: delete-jupyter-notebook
+	kubectl run jupyter --image=$(GHCR_JUPYTER_IMAGE) --port=8888 --image-pull-policy=Always --overrides='{"spec":{"serviceAccountName":"$(SERVICE_ACCOUNT)","containers":[{"name":"jupyter","image":"$(GHCR_JUPYTER_IMAGE)","env":[{"name":"ORCH_SPARK_K8S_NAMESPACE","value":"$(NAMESPACE)"}]}]}}' -n $(NAMESPACE)
+	@echo "Run: kubectl port-forward pod/jupyter 8888:8888 -n $(NAMESPACE)"
