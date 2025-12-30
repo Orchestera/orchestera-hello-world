@@ -2,6 +2,7 @@ IMAGE_NAME ?= hello-world
 ECR_REGISTRY ?= 853027285987.dkr.ecr.us-east-1.amazonaws.com
 TAG ?= latest
 AWS_PROFILE ?= orchestera-dev
+DOCKER_ARGS ?=
 
 .PHONY: venv build push build-dev push-dev build-jupyter push-jupyter
 
@@ -9,7 +10,7 @@ venv:
 	uv sync
 
 build:
-	cd .. && docker buildx build --platform linux/amd64 -t $(IMAGE_NAME):$(TAG) --load -f hello-world/Dockerfile .
+	cd .. && docker buildx build --platform linux/amd64 -t $(IMAGE_NAME):$(TAG) --load $(DOCKER_ARGS) -f hello-world/Dockerfile .
 
 # make push AWS_PROFILE=some-other-profile
 push:
@@ -18,7 +19,7 @@ push:
 	docker push $(ECR_REGISTRY)/$(IMAGE_NAME):$(TAG)
 
 build-jupyter:
-	cd .. && docker buildx build --platform linux/amd64 -t $(IMAGE_NAME):jupyter --load -f hello-world/Dockerfile.jupyter .
+	cd .. && docker buildx build --platform linux/amd64 -t $(IMAGE_NAME):jupyter --load $(DOCKER_ARGS) -f hello-world/Dockerfile.jupyter .
 
 push-jupyter:
 	aws ecr get-login-password --region us-east-1 --profile $(AWS_PROFILE) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
