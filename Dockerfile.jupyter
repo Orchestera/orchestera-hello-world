@@ -1,0 +1,94 @@
+# syntax=docker/dockerfile:1.6
+# Development Dockerfile with JupyterLab for interactive notebook development
+# Build: docker build -f Dockerfile.jupyter -t spark-jupyter:latest .
+# Run:   docker run -p 8888:8888 -v $(pwd)/hello-world/src:/workspace/app/src spark-jupyter:latest
+
+FROM apache/spark:3.5.6-python3 AS spark-deps
+
+ARG HADOOP_AWS_VER=3.3.4
+ARG AWS_SDK_BUNDLE_VER=1.12.746
+
+USER root
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && \
+    apt-get install -y python3 python3-pip python3-venv build-essential curl ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Stage 2: Build orchestera-lib wheel
+FROM spark-deps AS wheel-builder
+
+COPY orchestera-lib /workspace/orchestera-lib
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    cd /workspace/orchestera-lib && \
+    uv build
+
+# Stage 3: Final development stage
+FROM apache/spark:3.5.6-python3
+
+ARG HADOOP_AWS_VER=3.3.4
+ARG AWS_SDK_BUNDLE_VER=1.12.746
+
+USER root
+
+RUN set -eux; \
+    if ! getent group spark >/dev/null; then groupadd -g 1000 spark; fi; \
+    if ! id -u spark >/dev/null 2>&1; then useradd -m -u 1000 -g spark -s /bin/bash spark; fi
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+ENV UV_PYTHON_INSTALL_DIR=/opt/python
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv python install 3.10 && \
+    uv venv --python 3.10 $VIRTUAL_ENV
+
+RUN mkdir -p /opt/spark/jars && \
+    curl -fL "https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_AWS_VER}/hadoop-aws-${HADOOP_AWS_VER}.jar" -o /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VER}.jar && \
+    curl -fL "https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_BUNDLE_VER}/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VER}.jar" -o /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VER}.jar && \
+    chown spark:spark /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VER}.jar /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VER}.jar
+
+COPY --from=wheel-builder /workspace/orchestera-lib/dist/*.whl /tmp/
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install /tmp/*.whl && rm /tmp/*.whl
+
+# Install JupyterLab and related packages
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install jupyterlab ipykernel
+
+# Register the kernel
+RUN python -m ipykernel install --name spark-python --display-name "Spark Python 3.10"
+
+WORKDIR /workspace/app
+
+COPY hello-world/pyproject.toml hello-world/uv.lock ./
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install pyspark==3.5.6
+
+COPY hello-world/src /workspace/app/src
+
+RUN chown -R spark:spark /workspace
+
+ENV NB_USER=spark \
+    NB_UID=1000 \
+    NB_GID=1000 \
+    PYSPARK_PYTHON=/opt/venv/bin/python \
+    JUPYTER_TOKEN=dev
+
+WORKDIR /workspace/app/src
+
+EXPOSE 8888
+
+USER spark
+
+# Start JupyterLab by default (mount your code with -v for hot reload)
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--NotebookApp.token=${JUPYTER_TOKEN}", "--NotebookApp.allow_origin=*"]

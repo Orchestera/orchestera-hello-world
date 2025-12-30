@@ -1,0 +1,17 @@
+[project]
+name = "hello-world"
+version = "0.1.0"
+description = "Sample PySpark application for Sparklith"
+readme = "README.md"
+requires-python = ">=3.10.14"
+dependencies = [
+    "pyspark==3.5.6",
+]
+
+[tool.uv.sources]
+orchestera-lib = { path = "../orchestera-lib", editable = true }
+
+[dependency-groups]
+dev = [
+    "orchestera-lib",
+]

@@ -1,0 +1,124 @@
+# syntax=docker/dockerfile:1.6
+# Multi-stage build for better caching
+# Stage 1: Spark and Python dependencies
+FROM apache/spark:3.5.6 AS spark-deps
+
+# S3 jar versions (can be overridden at build)
+# Use Hadoop 3.3.4 to match Spark 3.5.6's built-in Hadoop version
+ARG HADOOP_AWS_VER=3.3.4
+ARG AWS_SDK_BUNDLE_VER=1.12.746
+
+# Switch to root user
+USER root
+
+# Install build dependencies (cached unless base image changes)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && \
+    apt-get install -y python3 python3-pip python3-venv build-essential curl ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --upgrade pip && \
+    /opt/venv/bin/pip install jupyterlab
+
+# Stage 2: Build custom spark wheel
+FROM spark-deps AS wheel-builder
+
+# Copy only spark source code and build wheel (cached unless spark code changes)
+COPY spark /workspace/spark
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    cd /workspace/spark && \
+    python3 -m pip install --upgrade pip && \
+    python3 -m pip install build && \
+    python3 -m build
+
+# Stage 3: Final application stage
+FROM apache/spark:3.5.6
+
+# Redeclare S3 jar version args for this stage - use newer AWS SDK that supports ecsFullUriAllowedHosts
+# Use Hadoop 3.3.4 to match Spark 3.5.6's built-in Hadoop version
+ARG HADOOP_AWS_VER=3.3.4
+ARG AWS_SDK_BUNDLE_VER=1.12.746
+
+# Switch to root user
+USER root
+
+# Ensure a consistent non-root user/group exists in the final image
+RUN set -eux; \
+    if ! getent group spark >/dev/null; then groupadd -g 1000 spark; fi; \
+    if ! id -u spark >/dev/null 2>&1; then useradd -m -u 1000 -g spark -s /bin/bash spark; fi
+
+# Bring in the Python virtualenv (JupyterLab installed) from the builder stage
+COPY --from=spark-deps /opt/venv /opt/venv
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+
+# Install runtime dependencies (cached unless base image changes)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && \
+    apt-get install -y python3 python3-pip python3-venv build-essential curl ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Pre-bake S3 support jars using Hadoop 3.3.4 to match Spark 3.5.6
+# Only add hadoop-aws and aws-java-sdk-bundle (hadoop-client JARs already present)
+RUN mkdir -p /opt/spark/jars && \
+    curl -fL "https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_AWS_VER}/hadoop-aws-${HADOOP_AWS_VER}.jar" -o /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VER}.jar && \
+    curl -fL "https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_BUNDLE_VER}/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VER}.jar" -o /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VER}.jar && \
+    chown spark:spark /opt/spark/jars/hadoop-aws-${HADOOP_AWS_VER}.jar /opt/spark/jars/aws-java-sdk-bundle-${AWS_SDK_BUNDLE_VER}.jar
+
+# Copy pre-built spark wheel from wheel-builder stage
+COPY --from=wheel-builder /workspace/spark/dist/*.whl /tmp/
+
+# Install spark wheel (cached unless spark wheel changes)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    PIP_PREFER_BINARY=1 pip3 install --prefer-binary /tmp/*.whl && rm /tmp/*.whl
+
+WORKDIR /workspace/app
+
+# Copy requirements first (cached unless requirements change)
+COPY hello-world/requirements.txt .
+
+# Install Python dependencies (cached unless requirements.txt changes)
+# Filter out local file references since we already installed the spark wheel
+RUN --mount=type=cache,target=/root/.cache/pip \
+    grep -v "^file:" requirements.txt > requirements-filtered.txt && \
+    if [ -s requirements-filtered.txt ]; then pip3 install --no-cache-dir -r requirements-filtered.txt; fi
+
+# Ensure the venv is owned by the non-root user
+RUN chown -R spark:spark /opt/venv
+
+# Add Jupyter start script first
+COPY hello-world/start-jupyter.sh /usr/local/bin/start-jupyter
+RUN chmod +x /usr/local/bin/start-jupyter
+
+# Copy application code last (only this layer rebuilds when code changes)
+COPY hello-world/ /workspace/app
+
+# Ensure workspace is owned by non-root user
+RUN chown -R spark:spark /workspace
+
+# Set environment variables
+ENV NB_USER=spark \
+    NB_UID=1000 \
+    NB_GID=1000 \
+    JUPYTER_PORT=8888 \
+    JUPYTER_NOTEBOOK_DIR=/workspace/app \
+    JUPYTER_TOKEN= \
+    PYSPARK_PYTHON=python3
+    # PYTHONPATH=/workspace/app/src:${PYTHONPATH}
+
+EXPOSE 8888
+
+WORKDIR /workspace/app/src
+
+# Drop privileges
+USER spark
+
+# Use CMD instead of ENTRYPOINT so Spark can override it for executors
+CMD ["/usr/local/bin/start-jupyter"]
