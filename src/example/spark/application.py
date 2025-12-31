@@ -27,52 +27,12 @@ class SparkK8sHelloWorld(SparklithEntryPoint):
     def run(self):
         """Code entrypoint"""
 
-        additional_spark_conf = {
-            "spark.default.parallelism": 4,
-
-            # Override executor image
-            "spark.kubernetes.executor.container.image": EXECUTOR_IMAGE,
-
-            # Explicitly add the JARs to executor classpath
-            "spark.executor.extraClassPath": "/opt/spark/jars/hadoop-aws-3.3.4.jar:/opt/spark/jars/aws-java-sdk-bundle-1.12.746.jar",
-
-
-            # Allow EKS Pod Identity agent FULL_URI host for AWS SDK v1
-            "spark.driver.extraJavaOptions": "-Dcom.amazonaws.sdk.ecsFullUriAllowedHosts=169.254.170.23,localhost,127.0.0.1",
-            "spark.executor.extraJavaOptions": "-Dcom.amazonaws.sdk.ecsFullUriAllowedHosts=169.254.170.23,localhost,127.0.0.1",
-
-            # Service account for pod identity
-            "spark.kubernetes.authenticate.driver.serviceAccountName": "spark",
-            "spark.kubernetes.authenticate.executor.serviceAccountName": "spark",
-
-            # Hadoop AWS filesystem
-            "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
-
-            # Use EKS Pod Identity container credentials
-            "spark.hadoop.fs.s3a.aws.credentials.provider": (
-                "com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper"
-            ),
-
-            # Prevent IMDS from being used as a fallback so node instance profile doesn't override Pod Identity
-            "spark.executorEnv.AWS_EC2_METADATA_DISABLED": "true",
-            "spark.kubernetes.driverEnv.AWS_EC2_METADATA_DISABLED": "true",
-
-            # Optional: faster committers for Spark
-            "spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version": "2",
-            "spark.hadoop.fs.s3a.committer.name": "directory",
-            "spark.hadoop.fs.s3a.committer.magic.enabled": "false",
-
-            # Set HOME to writable directory for executors
-            "spark.executorEnv.HOME": "/tmp",
-            "spark.executorEnv.PYSPARK_PYTHON": "python3",
-        }
-
         with OrchesteraSparkSession(
             app_name="SparkK8sHelloWorld",
             executor_instances=4,
             executor_cores=1,
             executor_memory="2g",
-            additional_spark_conf=additional_spark_conf,
+            additional_spark_conf={},
         ) as spark:
 
             bucket = "sparklith-warehouse-sep29"
