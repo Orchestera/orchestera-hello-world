@@ -22,7 +22,6 @@ EXECUTOR_IMAGE = "ghcr.io/orchestera/docker-images/spark:latest"
 class SparkK8sHelloWorld(SparklithEntryPoint):
 
     application_name = StringArg(required=True, tooltip="Name of the application")
-    # image = StringArg(required=True, tooltip="Image to use for the application")
 
     def run(self):
         """Code entrypoint"""
