@@ -74,11 +74,6 @@ class SparkK8sHelloWorld(SparklithEntryPoint):
             executor_memory="2g",
             additional_spark_conf=additional_spark_conf,
         ) as spark:
-            # Ensure default parallelism equals number of executors
-            try:
-                num_executors = int(spark.sparkContext.getConf().get("spark.executor.instances", "1"))
-            except ValueError:
-                num_executors = 1
 
             bucket = "sparklith-warehouse-sep29"
             prefix = "spark-outputs/"
@@ -104,9 +99,7 @@ class SparkK8sHelloWorld(SparklithEntryPoint):
                 df = spark.read.option("header", True).csv(input_uri)
 
                 # Use number of executors for parallelism
-                num_partitions = num_executors if num_executors > 0 else 1
-                if num_partitions > 1:
-                    df = df.repartition(num_partitions)
+                df = df.repartition(4)
 
                 # Overwrite output using Spark (folder semantics on S3)
                 df.coalesce(1).write.mode("overwrite").option("header", True).csv(output_uri)
