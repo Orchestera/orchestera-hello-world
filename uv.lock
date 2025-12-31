@@ -214,7 +214,7 @@ wheels = [
 
 [[package]]
 name = "orchestera-lib"
-version = "0.1.0"
+version = "0.1.0a1"
 source = { editable = "../orchestera-lib" }
 dependencies = [
     { name = "click" },
