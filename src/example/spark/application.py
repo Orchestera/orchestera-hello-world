@@ -92,6 +92,8 @@ class SparkK8sHelloWorld(SparklithEntryPoint):
             # Prepare the input keys for only the specified base CSVs
             input_keys = [f"{prefix}{name}" for name in base_files]
 
+            logger.info("Testing envar retrieval for DATABASE_URL: %s", os.environ.get("DATABASE_URL"))
+
             # Read each CSV with Spark and write back with the '-new.csv' suffix
             for key in input_keys:
                 input_uri = f"s3a://{bucket}/{key}"
