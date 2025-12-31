@@ -127,7 +127,7 @@ If testing orchestera-lib locally, add the following to your `pyproject.toml` fi
 [tool.uv.sources]
 orchestera-lib = { path = "../orchestera-lib", editable = true }
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "orchestera-lib",
 ]
