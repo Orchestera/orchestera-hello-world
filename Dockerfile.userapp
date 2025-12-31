@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1.6
+# Application image based on Sparklith Spark base image
+# Build: docker buildx build --platform linux/amd64 -t sparklith-app:latest --load -f Dockerfile.userapp .
+
+ARG BASE_IMAGE=ghcr.io/orchestera/docker-images/spark:latest
+FROM ${BASE_IMAGE}
+
+USER root
+
+# Copy application code
+COPY --chown=spark:spark src/ /workspace/src/
+
+# Add src to Python path
+ENV PYTHONPATH="/workspace/src:${PYTHONPATH}"
+
+# Drop privileges
+USER spark
+
+WORKDIR /workspace

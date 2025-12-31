@@ -1,17 +1,17 @@
 IMAGE_NAME ?= hello-world
-ECR_REGISTRY ?= 853027285987.dkr.ecr.us-east-1.amazonaws.com
+ECR_REGISTRY ?= 
 TAG ?= latest
 AWS_PROFILE ?= orchestera-dev
 DOCKER_ARGS ?=
 GHCR_JUPYTER_IMAGE ?= ghcr.io/orchestera/docker-images/jupyter:latest
 
-.PHONY: venv build push build-dev push-dev build-jupyter push-jupyter
+.PHONY: venv build push build-dev push-dev build-jupyter push-jupyter build-userapp push-userapp
 
 venv:
 	uv sync
 
 build:
-	cd .. && docker buildx build --platform linux/amd64 -t $(IMAGE_NAME):$(TAG) --load $(DOCKER_ARGS) -f hello-world/Dockerfile .
+	cd .. && docker buildx build --platform linux/amd64 -t $(IMAGE_NAME):$(TAG) --load $(DOCKER_ARGS) -f hello-world/Dockerfile.spark .
 
 # make push AWS_PROFILE=some-other-profile
 push:
@@ -59,3 +59,14 @@ stop-port-forward:
 launch-prebuilt-jupyter-notebook: delete-jupyter-notebook
 	kubectl run jupyter --image=$(GHCR_JUPYTER_IMAGE) --port=8888 --image-pull-policy=Always --overrides='{"spec":{"serviceAccountName":"$(SERVICE_ACCOUNT)","containers":[{"name":"jupyter","image":"$(GHCR_JUPYTER_IMAGE)","env":[{"name":"ORCH_SPARK_K8S_NAMESPACE","value":"$(NAMESPACE)"}]}]}}' -n $(NAMESPACE)
 	@echo "Run: kubectl port-forward pod/jupyter 8888:8888 -n $(NAMESPACE)"
+
+build-userapp:
+	docker buildx build --platform linux/amd64 -t $(IMAGE_NAME):userapp --load $(DOCKER_ARGS) -f Dockerfile.userapp .
+
+push-userapp:
+ifndef ECR_REGISTRY
+	$(error ECR_REGISTRY is required. Usage: make push-userapp ECR_REGISTRY=<registry>)
+endif
+	aws ecr get-login-password --region us-east-1 --profile $(AWS_PROFILE) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
+	docker tag $(IMAGE_NAME):userapp $(ECR_REGISTRY)/$(IMAGE_NAME):userapp
+	docker push $(ECR_REGISTRY)/$(IMAGE_NAME):userapp
