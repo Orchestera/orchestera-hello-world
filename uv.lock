@@ -164,7 +164,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "orchestera-lib", specifier = "==0.1.0a1" },
+    { name = "orchestera-lib", specifier = "==0.1.0a2" },
     { name = "pyspark", specifier = "==3.5.6" },
 ]
 
@@ -210,7 +210,7 @@ wheels = [
 
 [[package]]
 name = "orchestera-lib"
-version = "0.1.0a1"
+version = "0.1.0a2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -220,9 +220,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "watch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8c/c5/ab7b6f822263604b060956b2259639086d1d91cb7817769577d15e0f4148/orchestera_lib-0.1.0a1.tar.gz", hash = "sha256:fbfa825d195654bbaa446be70af6693a4735ad453605ad97fb39fad1b6573af6", size = 9466, upload-time = "2025-12-31T16:56:36.071Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8a/44/1944475f65fbe56c9574ec8a7214d8145636e62244e64f9eb7e5106571a6/orchestera_lib-0.1.0a2.tar.gz", hash = "sha256:9d6dcdc8b1bd3d76401c8683cbff536e5e411c03b701a15646a13508d0577e75", size = 9363, upload-time = "2025-12-31T22:10:09.091Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/74/e3/faf7f0aaffdab386549173b88712bbc960c7afd185678cbf31fa873906c4/orchestera_lib-0.1.0a1-py3-none-any.whl", hash = "sha256:cbdc6e3770b5713e2cd4259935d1b607f9e5f0d4230a4f3af2a78fa011db7ab5", size = 12043, upload-time = "2025-12-31T16:56:34.99Z" },
+    { url = "https://files.pythonhosted.org/packages/08/e8/2ad746dd158d291d3cb2e992fcd7cc2db9ca1a5c3d9b95bcbe616c735431/orchestera_lib-0.1.0a2-py3-none-any.whl", hash = "sha256:4e02a8c29c6a3708e516a0722779afe42c90b10f94623f9c272390e0e9a7bad8", size = 11962, upload-time = "2025-12-31T22:10:09.743Z" },
 ]
 
 [[package]]

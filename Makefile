@@ -38,7 +38,7 @@ endif
 	-kubectl delete pod jupyter -n $(NAMESPACE)
 
 launch-jupyter-notebook: delete-jupyter-notebook
-	kubectl run jupyter --image=$(ECR_REGISTRY)/$(IMAGE_NAME):jupyter --port=8888 --image-pull-policy=Always --overrides='{"spec":{"serviceAccountName":"$(SERVICE_ACCOUNT)","containers":[{"name":"jupyter","image":"$(ECR_REGISTRY)/$(IMAGE_NAME):jupyter","env":[{"name":"ORCH_SPARK_K8S_NAMESPACE","value":"$(NAMESPACE)"}]}]}}' -n $(NAMESPACE)
+	kubectl run jupyter --image=$(ECR_REGISTRY)/$(IMAGE_NAME):jupyter --port=8888 --image-pull-policy=Always --overrides='{"spec":{"serviceAccountName":"$(SERVICE_ACCOUNT)","nodeSelector":{"dedicated":"spark"},"tolerations":[{"key":"dedicated","operator":"Equal","value":"spark","effect":"NoSchedule"}],"containers":[{"name":"jupyter","image":"$(ECR_REGISTRY)/$(IMAGE_NAME):jupyter","env":[{"name":"ORCH_SPARK_K8S_NAMESPACE","value":"$(NAMESPACE)"}]}]}}' -n $(NAMESPACE)
 	@echo "Run: kubectl port-forward pod/jupyter 8888:8888 -n $(NAMESPACE)"
 
 # make port-forward-jupyter-notebook NAMESPACE=prod-app
@@ -57,7 +57,7 @@ stop-port-forward:
 
 # make launch-prebuilt-jupyter-notebook NAMESPACE=prod-app
 launch-prebuilt-jupyter-notebook: delete-jupyter-notebook
-	kubectl run jupyter --image=$(GHCR_JUPYTER_IMAGE) --port=8888 --image-pull-policy=Always --overrides='{"spec":{"serviceAccountName":"$(SERVICE_ACCOUNT)","containers":[{"name":"jupyter","image":"$(GHCR_JUPYTER_IMAGE)","env":[{"name":"ORCH_SPARK_K8S_NAMESPACE","value":"$(NAMESPACE)"}]}]}}' -n $(NAMESPACE)
+	kubectl run jupyter --image=$(GHCR_JUPYTER_IMAGE) --port=8888 --image-pull-policy=Always --overrides='{"spec":{"serviceAccountName":"$(SERVICE_ACCOUNT)","nodeSelector":{"dedicated":"spark"},"tolerations":[{"key":"dedicated","operator":"Equal","value":"spark","effect":"NoSchedule"}],"containers":[{"name":"jupyter","image":"$(GHCR_JUPYTER_IMAGE)","env":[{"name":"ORCH_SPARK_K8S_NAMESPACE","value":"$(NAMESPACE)"}]}]}}' -n $(NAMESPACE)
 	@echo "Run: kubectl port-forward pod/jupyter 8888:8888 -n $(NAMESPACE)"
 
 build-userapp:
