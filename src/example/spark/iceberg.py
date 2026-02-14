@@ -18,7 +18,7 @@ class IcebergS3Example(SparklithEntryPoint):
     def run(self):
         """Code entrypoint for Iceberg S3 example"""
 
-        bucket = "sparklith-warehouse-sep29"
+        bucket = "sparklith-warehouse-feb13"
         warehouse_path = f"s3a://{bucket}/iceberg-warehouse"
 
         # Iceberg runtime packages (compatible with Spark 3.5)

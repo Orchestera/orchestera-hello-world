@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1.6
+# Dev image that installs local orchestera-lib over the base image.
+# Build context must be the parent directory (orchestera/).
+# Build: cd .. && docker buildx build --platform linux/amd64 -t hello-world:userapp-dev --load -f hello-world/Dockerfile.userapp-dev .
+
+ARG BASE_IMAGE=ghcr.io/orchestera/docker-images/spark:latest
+FROM ${BASE_IMAGE}
+
+USER root
+
+# Install local orchestera-lib into the runtime venv (/opt/venv).
+# Do not use system pip here, because runtime uses /opt/venv/bin/python.
+COPY --chown=spark:spark orchestera-lib/ /tmp/orchestera-lib/
+RUN uv pip install --python /opt/venv/bin/python --no-deps /tmp/orchestera-lib/ \
+    && rm -rf /tmp/orchestera-lib/
+
+# Copy application code
+COPY --chown=spark:spark hello-world/src/ /workspace/src/
+
+# Add src to Python path
+ENV PYTHONPATH="/workspace/src:${PYTHONPATH}"
+
+# Drop privileges
+USER spark
+
+WORKDIR /workspace

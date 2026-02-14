@@ -63,6 +63,12 @@ launch-prebuilt-jupyter-notebook: delete-jupyter-notebook
 build-userapp:
 	docker buildx build --platform linux/amd64 -t $(IMAGE_NAME):userapp --load $(DOCKER_ARGS) -f Dockerfile.userapp .
 
+# Dev variants that install local orchestera-lib into the image
+build-userapp-dev:
+	cd .. && docker buildx build --platform linux/amd64 -t $(IMAGE_NAME):userapp --load $(DOCKER_ARGS) -f hello-world/Dockerfile.userapp-dev .
+
+push-userapp-dev: build-userapp-dev push-userapp
+
 push-userapp:
 ifndef ECR_REGISTRY
 	$(error ECR_REGISTRY is required. Usage: make push-userapp ECR_REGISTRY=<registry>)
